@@ -1,3 +1,4 @@
+// src/app/components/Header.tsx
 'use client';
 
 import Link from 'next/link';
@@ -5,34 +6,35 @@ import { useEffect, useState } from 'react';
 import { createBrowser } from '@/lib/supabase/browserClient';
 import type { User } from '@supabase/supabase-js';
 
+// 追加：必要な項目だけの安全な型
+type UserMeta = {
+  name?: string;
+  full_name?: string;
+};
+
 export default function Header() {
   const supabase = createBrowser();
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     let mounted = true;
-
-    // 初期取得
     supabase.auth.getUser().then(({ data }) => {
       if (mounted) setUser(data.user ?? null);
     });
-
-    // 認証状態の変化を監視
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_evt, session) => {
       if (mounted) setUser(session?.user ?? null);
     });
-
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
   }, [supabase]);
 
-  // ← ここを修正：any を使わず unknown で受けて型ガードで取り出す
-  const meta = (user?.user_metadata ?? {}) as Record<string, unknown>;
+  // 👇 ここを修正（any をやめる）
+  const meta = (user?.user_metadata ?? {}) as UserMeta;
   const displayName =
-    (typeof meta['name'] === 'string' && meta['name']) ||
-    (typeof meta['full_name'] === 'string' && meta['full_name']) ||
+    (typeof meta.name === 'string' && meta.name) ||
+    (typeof meta.full_name === 'string' && meta.full_name) ||
     user?.email ||
     '';
 
@@ -43,9 +45,7 @@ export default function Header() {
         <nav className="flex items-center gap-3">
           {user ? (
             <>
-              <span className="text-sm text-gray-600 truncate max-w-[180px]">
-                {displayName as string}
-              </span>
+              <span className="text-sm text-gray-600 truncate max-w-[180px]">{displayName}</span>
               <Link href="/logout" className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">
                 ログアウト
               </Link>
