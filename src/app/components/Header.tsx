@@ -28,8 +28,13 @@ export default function Header() {
     };
   }, [supabase]);
 
-  const meta = (user?.user_metadata ?? {}) as Record<string, any>;
-  const displayName = meta.name ?? meta.full_name ?? user?.email ?? '';
+  // ← ここを修正：any を使わず unknown で受けて型ガードで取り出す
+  const meta = (user?.user_metadata ?? {}) as Record<string, unknown>;
+  const displayName =
+    (typeof meta['name'] === 'string' && meta['name']) ||
+    (typeof meta['full_name'] === 'string' && meta['full_name']) ||
+    user?.email ||
+    '';
 
   return (
     <header className="border-b">
@@ -38,7 +43,9 @@ export default function Header() {
         <nav className="flex items-center gap-3">
           {user ? (
             <>
-              <span className="text-sm text-gray-600 truncate max-w-[180px]">{displayName}</span>
+              <span className="text-sm text-gray-600 truncate max-w-[180px]">
+                {displayName as string}
+              </span>
               <Link href="/logout" className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">
                 ログアウト
               </Link>
