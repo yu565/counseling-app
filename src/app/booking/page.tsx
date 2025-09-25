@@ -21,7 +21,6 @@ export default function BookingPage() {
   const [msgErr, setMsgErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  // 枠の取得：is_active=true かつ start_ts > now
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -33,16 +32,15 @@ export default function BookingPage() {
         .from('availability_slots')
         .select('id,start_ts,end_ts,note')
         .eq('is_active', true)
-        .gt('start_ts', nowIso) // 未来の枠だけ
+        .gt('start_ts', nowIso)
         .order('start_ts', { ascending: true });
 
-      if (error) setMsgErr((error as any)?.message ?? '枠一覧の取得に失敗しました');
+      if (error) setMsgErr(error.message);
       else setSlots(data ?? []);
 
       setLoading(false);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [supabase]);
 
   const book = async (slotId: string) => {
     setMsgOk(null);
@@ -52,22 +50,16 @@ export default function BookingPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setMsgErr('ログインが必要です'); setBusyId(null); return; }
 
-    // 予約作成（status を明示）
     const { error } = await supabase
       .from('reservations')
       .insert({ slot_id: slotId, user_id: user.id, status: 'booked' });
 
     if (error) {
-      // Supabase の PostgrestError は code を持つので any 経由で安全に参照
-      const code = (error as any)?.code as string | undefined;
-      if (code === '23505') {
-        setMsgErr('この枠はすでに予約されました。更新して確認してください。');
-      } else {
-        setMsgErr((error as any)?.message ?? '予約に失敗しました');
-      }
+      const code = (error as { code?: string }).code;
+      if (code === '23505') setMsgErr('この枠はすでに予約されました。更新して確認してください。');
+      else setMsgErr(error.message);
     } else {
       setMsgOk('予約しました！');
-      // 予約済み枠は一覧から消す
       setSlots(prev => prev.filter(s => s.id !== slotId));
     }
 

@@ -5,14 +5,11 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createServer } from '@/lib/supabase/serverClient';
 
-/**
- * 予約キャンセル（本人のみ・未来の枠だけ許可）
- * formAction の要件に合わせて Promise<void>（値は返さない）
- */
 export async function cancelReservationAction(formData: FormData): Promise<void> {
-  const reservationId = String(formData.get('reservationId') ?? '');
+  const rawId = formData.get('reservationId');
+  const reservationId = typeof rawId === 'string' ? rawId : '';
 
-  // パラメータ不正なら一覧へ
+  // パラメータ不正
   if (!reservationId) {
     revalidatePath('/reservations');
     redirect('/reservations');
@@ -20,17 +17,14 @@ export async function cancelReservationAction(formData: FormData): Promise<void>
 
   const supabase = await createServer();
 
-  // 認証ユーザー取得
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  // 認証
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     revalidatePath('/reservations');
     redirect('/reservations');
   }
 
-  // 本人の予約のみ対象
+  // 本人の予約のみ取得
   const { data: resv } = await supabase
     .from('reservations')
     .select('id, user_id, status, slot_id')
@@ -43,7 +37,7 @@ export async function cancelReservationAction(formData: FormData): Promise<void>
     redirect('/reservations');
   }
 
-  // 未来の枠のみキャンセル可（列名差異に強い判定）
+  // 未来の枠だけキャンセル可（列名が start* の列を自動検出）
   let canCancel = true;
   if (resv.slot_id) {
     const { data: slotRows } = await supabase
@@ -52,12 +46,13 @@ export async function cancelReservationAction(formData: FormData): Promise<void>
       .eq('id', resv.slot_id)
       .limit(1);
 
-    const slot = slotRows?.[0] as Record<string, any> | undefined;
-    const startKey = slot ? Object.keys(slot).find((k) => k.toLowerCase().includes('start')) : undefined;
-    const startIso = startKey ? String(slot![startKey]) : undefined;
+    const slot = slotRows?.[0] as Record<string, unknown> | undefined; // ← any を使わない
+    const startKey = slot ? Object.keys(slot).find(k => k.toLowerCase().includes('start')) : undefined;
+    const startRaw = startKey ? slot?.[startKey] : undefined;
+    const startIso = typeof startRaw === 'string' ? startRaw : undefined;
 
     if (startIso) {
-      const startTime = new Date(startIso).getTime();
+      const startTime = Date.parse(startIso);
       if (!Number.isNaN(startTime) && startTime <= Date.now()) {
         canCancel = false; // すでに開始済み
       }
@@ -69,7 +64,7 @@ export async function cancelReservationAction(formData: FormData): Promise<void>
     redirect('/reservations');
   }
 
-  // ステータス更新（念のため booked のものだけ）
+  // ステータス更新（booked のものだけ）
   await supabase
     .from('reservations')
     .update({ status: 'cancelled' })
@@ -77,7 +72,6 @@ export async function cancelReservationAction(formData: FormData): Promise<void>
     .eq('user_id', user.id)
     .eq('status', 'booked');
 
-  // 画面更新＆戻る
   revalidatePath('/reservations');
   redirect('/reservations');
 }
