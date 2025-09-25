@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { createBrowser } from '@/lib/supabase/browserClient';
 import type { User } from '@supabase/supabase-js';
 
+type Meta = { [k: string]: unknown };
+
 export default function Header() {
   const supabase = createBrowser();
   const [user, setUser] = useState<User | null>(null);
@@ -26,11 +28,12 @@ export default function Header() {
     };
   }, [supabase]);
 
-  const meta = (user?.user_metadata ?? {}) as Record<string, unknown>;
+  const meta = (user?.user_metadata ?? {}) as Meta;
   const displayName =
-    typeof meta.name === 'string' ? meta.name :
-    typeof meta.full_name === 'string' ? meta.full_name :
-    user?.email ?? '';
+    (typeof meta.name === 'string' ? meta.name : undefined) ??
+    (typeof meta.full_name === 'string' ? meta.full_name : undefined) ??
+    user?.email ??
+    '';
 
   return (
     <header className="border-b">
@@ -40,12 +43,18 @@ export default function Header() {
           {user ? (
             <>
               <span className="text-sm text-gray-600 truncate max-w-[180px]">{displayName}</span>
-              <Link href="/logout" className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">ログアウト</Link>
+              <Link href="/logout" className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">
+                ログアウト
+              </Link>
             </>
           ) : (
             <>
-              <Link href="/login" className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">ログイン</Link>
-              <Link href="/signup" className="rounded-lg bg-black text-white px-3 py-1 text-sm">新規登録</Link>
+              <Link href="/login" className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50">
+                ログイン
+              </Link>
+              <Link href="/signup" className="rounded-lg bg-black text-white px-3 py-1 text-sm">
+                新規登録
+              </Link>
             </>
           )}
         </nav>

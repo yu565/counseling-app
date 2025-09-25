@@ -1,4 +1,3 @@
-// /src/app/reservations/actions.ts
 'use server';
 
 import { revalidatePath } from 'next/cache';
@@ -8,23 +7,12 @@ import { createServer } from '@/lib/supabase/serverClient';
 export async function cancelReservationAction(formData: FormData): Promise<void> {
   const rawId = formData.get('reservationId');
   const reservationId = typeof rawId === 'string' ? rawId : '';
-
-  // パラメータ不正
-  if (!reservationId) {
-    revalidatePath('/reservations');
-    redirect('/reservations');
-  }
+  if (!reservationId) { revalidatePath('/reservations'); redirect('/reservations'); }
 
   const supabase = await createServer();
-
-  // 認証
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    revalidatePath('/reservations');
-    redirect('/reservations');
-  }
+  if (!user) { revalidatePath('/reservations'); redirect('/reservations'); }
 
-  // 本人の予約のみ取得
   const { data: resv } = await supabase
     .from('reservations')
     .select('id, user_id, status, slot_id')
@@ -32,12 +20,8 @@ export async function cancelReservationAction(formData: FormData): Promise<void>
     .eq('user_id', user.id)
     .single();
 
-  if (!resv) {
-    revalidatePath('/reservations');
-    redirect('/reservations');
-  }
+  if (!resv) { revalidatePath('/reservations'); redirect('/reservations'); }
 
-  // 未来の枠だけキャンセル可（列名が start* の列を自動検出）
   let canCancel = true;
   if (resv.slot_id) {
     const { data: slotRows } = await supabase
@@ -46,25 +30,19 @@ export async function cancelReservationAction(formData: FormData): Promise<void>
       .eq('id', resv.slot_id)
       .limit(1);
 
-    const slot = slotRows?.[0] as Record<string, unknown> | undefined; // ← any を使わない
+    const slot = slotRows?.[0] as Record<string, unknown> | undefined;
     const startKey = slot ? Object.keys(slot).find(k => k.toLowerCase().includes('start')) : undefined;
     const startRaw = startKey ? slot?.[startKey] : undefined;
     const startIso = typeof startRaw === 'string' ? startRaw : undefined;
 
     if (startIso) {
       const startTime = Date.parse(startIso);
-      if (!Number.isNaN(startTime) && startTime <= Date.now()) {
-        canCancel = false; // すでに開始済み
-      }
+      if (!Number.isNaN(startTime) && startTime <= Date.now()) canCancel = false;
     }
   }
 
-  if (!canCancel) {
-    revalidatePath('/reservations');
-    redirect('/reservations');
-  }
+  if (!canCancel) { revalidatePath('/reservations'); redirect('/reservations'); }
 
-  // ステータス更新（booked のものだけ）
   await supabase
     .from('reservations')
     .update({ status: 'cancelled' })
