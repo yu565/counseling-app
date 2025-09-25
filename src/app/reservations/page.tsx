@@ -3,7 +3,7 @@ import { createServer } from '@/lib/supabase/serverClient';
 import Link from 'next/link';
 import { cancelReservationAction } from './actions';
 
-type Slot = { id: string } & Record<string, any>;
+type SlotRow = { id: string } & Record<string, unknown>;
 
 type ReservationBase = {
   id: string;
@@ -11,20 +11,31 @@ type ReservationBase = {
   created_at: string;
   slot_id: string | null;
 };
-type ReservationView = ReservationBase & { availability_slots: Slot | null };
+
+type ReservationView = ReservationBase & { availability_slots: SlotRow | null };
 
 const formatJST = (iso: string) =>
   new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false });
 
-/** 列名が starts_at / start_at / start_time などでも拾えるよう自動検出 */
-const pickStartEnd = (s: Slot | null) => {
+/** 列名が starts_at / start_at / start_time などでも拾えるよう自動検出（any不使用） */
+const pickStartEnd = (s: Record<string, unknown> | null) => {
+  const toIsoString = (v: unknown): string | null => {
+    if (v == null) return null;
+    if (typeof v === 'string') return v;
+    if (v instanceof Date) return v.toISOString();
+    // 文字列化（DBの型がstring想定なので基本ここには来ない）
+    return String(v);
+  };
+
   if (!s) return { start: null as string | null, end: null as string | null };
+
   const keys = Object.keys(s);
   const startKey = keys.find((k) => k.toLowerCase().includes('start'));
   const endKey = keys.find((k) => k.toLowerCase().includes('end'));
+
   return {
-    start: startKey ? String((s as any)[startKey]) : null,
-    end: endKey ? String((s as any)[endKey]) : null,
+    start: startKey ? toIsoString(s[startKey]) : null,
+    end: endKey ? toIsoString(s[endKey]) : null,
   };
 };
 
@@ -36,6 +47,7 @@ export default async function ReservationsPage() {
     data: { user },
     error: userErr,
   } = await supabase.auth.getUser();
+
   if (userErr) {
     return (
       <main className="max-w-2xl mx-auto p-6">
@@ -68,6 +80,7 @@ export default async function ReservationsPage() {
   }
 
   const baseReservations = (resRows ?? []) as ReservationBase[];
+
   if (baseReservations.length === 0) {
     return (
       <main className="max-w-2xl mx-auto p-6 space-y-4">
@@ -85,10 +98,13 @@ export default async function ReservationsPage() {
   // 3) 関連する枠を一括取得（列名差異に強いように * で取得）
   const slotIds = Array.from(new Set(baseReservations.map((r) => r.slot_id).filter(Boolean))) as string[];
 
-  let slotMap = new Map<string, Slot>();
+  const slotMap = new Map<string, SlotRow>();
   if (slotIds.length > 0) {
     const { data: slotRows } = await supabase.from('availability_slots').select('*').in('id', slotIds);
-    for (const s of (slotRows ?? []) as Slot[]) slotMap.set(s.id, s);
+    for (const s of slotRows ?? []) {
+      const row = s as SlotRow;
+      if (typeof row.id === 'string') slotMap.set(row.id, row);
+    }
   }
 
   const reservations: ReservationView[] = baseReservations.map((r) => ({
@@ -106,9 +122,8 @@ export default async function ReservationsPage() {
           const slot = r.availability_slots;
           const { start, end } = pickStartEnd(slot);
 
-          // 本番条件：未来の予約だけキャンセル可
-          const canCancel =
-            r.status === 'booked' && start ? new Date(start).getTime() > Date.now() : false;
+          // 未来の予約だけキャンセル可
+          const canCancel = r.status === 'booked' && !!start && new Date(start).getTime() > Date.now();
 
           return (
             <li key={r.id} className="rounded-xl border p-4">
