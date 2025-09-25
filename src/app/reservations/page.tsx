@@ -2,11 +2,7 @@ import { createServer } from '@/lib/supabase/serverClient';
 import Link from 'next/link';
 import { cancelReservationAction } from './actions';
 
-type Slot = {
-  id: string;
-  // どの列名でも拾えるように緩く保持
-  [key: string]: unknown;
-};
+type Slot = { id: string } & Record<string, unknown>;
 
 type ReservationBase = {
   id: string;
@@ -19,17 +15,17 @@ type ReservationView = ReservationBase & { availability_slots: Slot | null };
 const formatJST = (iso: string) =>
   new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false });
 
-/** starts_at / start_at / start_time 等の列名に対応して文字列だけ返す */
+/** 列名が starts_at / start_at / start_time などでも拾えるよう自動検出 */
 const pickStartEnd = (s: Slot | null) => {
   if (!s) return { start: null as string | null, end: null as string | null };
   const keys = Object.keys(s);
   const startKey = keys.find((k) => k.toLowerCase().includes('start'));
-  const endKey = keys.find((k) => k.toLowerCase().includes('end'));
-  const startVal = startKey ? s[startKey] : undefined;
-  const endVal = endKey ? s[endKey] : undefined;
+  const endKey   = keys.find((k) => k.toLowerCase().includes('end'));
+  const startVal = startKey ? (s as Record<string, unknown>)[startKey] : undefined;
+  const endVal   = endKey   ? (s as Record<string, unknown>)[endKey]   : undefined;
   return {
     start: typeof startVal === 'string' ? startVal : null,
-    end: typeof endVal === 'string' ? endVal : null,
+    end:   typeof endVal   === 'string' ? endVal   : null,
   };
 };
 
@@ -84,7 +80,7 @@ export default async function ReservationsPage() {
 
   const slotIds = Array.from(new Set(baseReservations.map((r) => r.slot_id).filter(Boolean))) as string[];
 
-  const slotMap = new Map<string, Slot>();
+  const slotMap = new Map<string, Slot>(); // ← const に
   if (slotIds.length > 0) {
     const { data: slotRows } = await supabase.from('availability_slots').select('*').in('id', slotIds);
     for (const s of (slotRows ?? []) as Slot[]) slotMap.set(s.id, s);
@@ -115,7 +111,9 @@ export default async function ReservationsPage() {
                   <p className="font-medium">
                     {start && end ? `${formatJST(start)} 〜 ${formatJST(end)}` : '（枠情報なし／列名未一致）'}
                   </p>
-                  <p className="text-sm">ステータス：<span className="font-semibold">{r.status}</span></p>
+                  <p className="text-sm">
+                    ステータス：<span className="font-semibold">{r.status}</span>
+                  </p>
                   <p className="text-xs text-gray-500">作成：{formatJST(r.created_at)}</p>
                 </div>
 
