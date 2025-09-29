@@ -1,3 +1,4 @@
+// src/app/booking/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -10,8 +11,17 @@ type Slot = {
   note: string | null;
 };
 
-const fmtJST = (iso: string) =>
-  new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false });
+// UTCで表示（末尾に " UTC" を付けて明示）
+const fmtUTC = (iso: string) =>
+  new Date(iso).toLocaleString('ja-JP', {
+    timeZone: 'UTC',
+    hour12: false,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }) + ' UTC';
 
 export default function BookingPage() {
   const supabase = createBrowser();
@@ -27,7 +37,7 @@ export default function BookingPage() {
       setMsgOk(null);
       setMsgErr(null);
 
-      const nowIso = new Date().toISOString();
+      const nowIso = new Date().toISOString(); // UTC基準で未来のみ
       const { data, error } = await supabase
         .from('availability_slots')
         .select('id,start_ts,end_ts,note')
@@ -56,11 +66,11 @@ export default function BookingPage() {
 
     if (error) {
       const code = (error as { code?: string }).code;
-      if (code === '23505') setMsgErr('この枠はすでに予約されました。更新して確認してください。');
+      if (code === '23505') setMsgErr('この枠はすでに予約されました。ページを更新して確認してください。');
       else setMsgErr(error.message);
     } else {
       setMsgOk('予約しました！');
-      setSlots(prev => prev.filter(s => s.id !== slotId));
+      setSlots(prev => prev.filter(s => s.id !== slotId)); // 予約済みを即座に非表示
     }
 
     setBusyId(null);
@@ -70,7 +80,7 @@ export default function BookingPage() {
 
   return (
     <div className="p-6 space-y-4">
-      <h1 className="text-xl font-bold">空き枠</h1>
+      <h1 className="text-xl font-bold">空き枠（UTC）</h1>
 
       {msgOk && <div className="text-green-600">{msgOk}</div>}
       {msgErr && <div className="text-red-600">{msgErr}</div>}
@@ -79,7 +89,7 @@ export default function BookingPage() {
         {slots.map(s => (
           <li key={s.id} className="border p-4 rounded">
             <div className="font-medium">
-              {fmtJST(s.start_ts)} 〜 {fmtJST(s.end_ts)}
+              {fmtUTC(s.start_ts)} 〜 {fmtUTC(s.end_ts)}
             </div>
             {s.note && <div className="text-sm opacity-70">{s.note}</div>}
             <button

@@ -1,3 +1,4 @@
+// src/app/reservations/page.tsx
 import { createServer } from '@/lib/supabase/serverClient';
 import Link from 'next/link';
 import { cancelReservationAction } from './actions';
@@ -12,8 +13,17 @@ type ReservationBase = {
 };
 type ReservationView = ReservationBase & { availability_slots: Slot | null };
 
-const formatJST = (iso: string) =>
-  new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false });
+// UTCで表示（末尾に " UTC" を付けて明示）
+const fmtUTC = (iso: string) =>
+  new Date(iso).toLocaleString('ja-JP', {
+    timeZone: 'UTC',
+    hour12: false,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }) + ' UTC';
 
 /** 列名が starts_at / start_at / start_time などでも拾えるよう自動検出 */
 const pickStartEnd = (s: Slot | null) => {
@@ -57,7 +67,7 @@ export default async function ReservationsPage() {
   if (resErr) {
     return (
       <main className="max-w-2xl mx-auto p-6">
-        <h1 className="text-2xl font-bold mb-4">自分の予約</h1>
+        <h1 className="text-2xl font-bold mb-4">自分の予約（UTC）</h1>
         <p className="text-red-600">読み込みに失敗しました：{resErr.message}</p>
       </main>
     );
@@ -67,7 +77,7 @@ export default async function ReservationsPage() {
   if (baseReservations.length === 0) {
     return (
       <main className="max-w-2xl mx-auto p-6 space-y-4">
-        <h1 className="text-2xl font-bold">自分の予約</h1>
+        <h1 className="text-2xl font-bold">自分の予約（UTC）</h1>
         <p>まだ予約はありません。</p>
         <div>
           <Link href="/booking" className="inline-block rounded-xl border px-4 py-2 hover:bg-gray-50">
@@ -80,7 +90,7 @@ export default async function ReservationsPage() {
 
   const slotIds = Array.from(new Set(baseReservations.map((r) => r.slot_id).filter(Boolean))) as string[];
 
-  const slotMap = new Map<string, Slot>(); // ← const に
+  const slotMap = new Map<string, Slot>();
   if (slotIds.length > 0) {
     const { data: slotRows } = await supabase.from('availability_slots').select('*').in('id', slotIds);
     for (const s of (slotRows ?? []) as Slot[]) slotMap.set(s.id, s);
@@ -93,7 +103,7 @@ export default async function ReservationsPage() {
 
   return (
     <main className="max-w-2xl mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-bold">自分の予約</h1>
+      <h1 className="text-2xl font-bold">自分の予約（UTC）</h1>
 
       <ul className="space-y-3">
         {reservations.map((r) => {
@@ -109,12 +119,12 @@ export default async function ReservationsPage() {
                 <div className="space-y-1">
                   <p className="text-sm text-gray-500">予約ID: {r.id}</p>
                   <p className="font-medium">
-                    {start && end ? `${formatJST(start)} 〜 ${formatJST(end)}` : '（枠情報なし／列名未一致）'}
+                    {start && end ? `${fmtUTC(start)} 〜 ${fmtUTC(end)}` : '（枠情報なし／列名未一致）'}
                   </p>
                   <p className="text-sm">
                     ステータス：<span className="font-semibold">{r.status}</span>
                   </p>
-                  <p className="text-xs text-gray-500">作成：{formatJST(r.created_at)}</p>
+                  <p className="text-xs text-gray-500">作成：{fmtUTC(r.created_at)}</p>
                 </div>
 
                 {canCancel ? (
