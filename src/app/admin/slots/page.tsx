@@ -1,18 +1,16 @@
 // /src/app/admin/slots/page.tsx
 import { createServer } from '@/lib/supabase/serverClient';
 import { redirect } from 'next/navigation';
-import { createSlotAction, setSlotActiveAction } from './actions';
+import { createSlot, setActive } from './actions'; // ★ 新アクションを使用！
 
 const ADMIN_UID = process.env.ADMIN_UID;
 
 const fmtJST = (iso: string) =>
   new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false });
 
-type Search = { ok?: string; error?: string };
+type Search = { ok?: string; err?: string };
 
-export default async function AdminSlotsPage(
-  { searchParams }: { searchParams?: Search }
-) {
+export default async function AdminSlotsPage({ searchParams }: { searchParams?: Search }) {
   const supabase = await createServer();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -33,13 +31,12 @@ export default async function AdminSlotsPage(
     .order('start_ts', { ascending: false })
     .limit(100);
 
-  // バナー表示（actions.ts から ?ok=1 / ?error=... が付く）
+  // バナー表示（actions.ts は ?ok=1 / ?err=... を付与）
   const ok = searchParams?.ok === '1';
-  const errKey = searchParams?.error;
+  const errKey = searchParams?.err;
   const errorText =
-    errKey === 'invalid' ? '入力形式が不正です。' :
-    errKey === 'range'   ? '開始は終了より前である必要があります。' :
-    errKey === 'insert'  ? '保存に失敗しました（制約/RLS等）。' :
+    errKey === 'invalid_datetime' ? '日時の形式が不正です。' :
+    errKey ? `エラー：${errKey}` :
     null;
 
   return (
@@ -62,8 +59,8 @@ export default async function AdminSlotsPage(
         </div>
       )}
 
-      {/* 作成フォーム */}
-      <form action={createSlotAction} className="space-y-4 rounded-xl border p-4">
+      {/* 作成フォーム（★ server action 直呼び） */}
+      <form action={createSlot} className="space-y-4 rounded-xl border p-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="text-sm">開始（ローカル時刻）</span>
@@ -93,17 +90,14 @@ export default async function AdminSlotsPage(
                   <p className="font-medium">{fmtJST(s.start_ts)} 〜 {fmtJST(s.end_ts)}</p>
                   <p className="text-sm text-gray-600">状態：{s.is_active ? '有効' : '無効'}</p>
                 </div>
+
                 <div className="flex gap-2">
                   {s.is_active ? (
-                    <form action={setSlotActiveAction}>
-                      <input type="hidden" name="slotId" value={s.id} />
-                      <input type="hidden" name="active" value="false" />
+                    <form action={setActive.bind(null, s.id, false)}>
                       <button className="px-3 py-1 rounded-lg border hover:bg-gray-50">無効化</button>
                     </form>
                   ) : (
-                    <form action={setSlotActiveAction}>
-                      <input type="hidden" name="slotId" value={s.id} />
-                      <input type="hidden" name="active" value="true" />
+                    <form action={setActive.bind(null, s.id, true)}>
                       <button className="px-3 py-1 rounded-lg border hover:bg-gray-50">有効化</button>
                     </form>
                   )}
@@ -115,7 +109,7 @@ export default async function AdminSlotsPage(
       </section>
 
       <p className="text-xs text-gray-500">
-        入力は端末のローカル時刻で受け取り、DBにはUTC（ISO）で保存します。/booking では is_active=true の枠だけ表示してください。
+        入力はローカル時刻で受け取り、DBにはUTC（ISO）で保存します。表示はJSTでフォーマットしています。
       </p>
     </main>
   );
